@@ -32,16 +32,19 @@ def set_onehots(df, vals, drop=True):
         if drop:
             df.drop(c, inplace=True, axis=1)
 
-def get_train_data(int_fillna_cols=INT_FILLNA_COLS):
+def get_train_data(int_fillna_cols=INT_FILLNA_COLS, one_hot=True):
     """
     Read the training data from disk, identify the categorical variables and
     values to one-hot encode, and return the encoded data and the dictionary
     of one-hot values.
     """
-    train = pd.read_csv('data/train.csv')
+    train = pd.read_csv('../data/train.csv')
     train[TARGET_COL] = log(train[TARGET_COL])
-    for col in int_fillna_cols:
-        train[col].fillna(0, inplace=True)
+    if(int_fillna_cols):
+        for col in int_fillna_cols:
+            train[col].fillna(0, inplace=True)
+    if(not one_hot):
+        return train
     cats = [c for c, d in zip(train.columns, train.dtypes) if str(d) == 'object']
     onehotvals = get_onehots(train, cats)
     set_onehots(train, onehotvals, drop=True)
