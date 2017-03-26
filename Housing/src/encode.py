@@ -1,16 +1,17 @@
 import utils
 
-def fix_categorical(train, test, option):
+def fix_categorical(train, test, option, nullcol=True):
     cats = [c for c, d in zip(train.columns, train.dtypes) if str(d) == 'object']
-    for c in cats:
-        train[c] = train[c].apply(str)
-        test[c] = test[c].apply(str)
+    if nullcol:
+        for c in cats:
+            train[c] = train[c].apply(str)
+            test[c] = test[c].apply(str)
     if option == "one_hot":
         return one_hot(train, test)
     if option == "to_int":
         return to_int(train, test)
 
-def one_hot(train, test):
+def one_hot(train, test, nullcol=False):
     cats = [c for c, d in zip(train.columns, train.dtypes) if str(d) == 'object']
     onehotvals = utils.get_onehots(train, cats)
     utils.set_onehots(train, onehotvals, drop=True)
@@ -27,8 +28,9 @@ def to_int(train, test):
 
 def fix_numeric(train, test, cols, fillna_mode='zero', scaling='normal'):
     if fillna_mode == 'zero':
-        train[cols].fillna(0, inplace=True)
-        test[cols].fillna(0, inplace=True)
+        for c in cols:
+            train[c].fillna(0, inplace=True)
+            test[c].fillna(0, inplace=True)
     elif fillna_mode == 'mean':
         means = [train[c].mean() for c in cols]
         for c, m in zip(cols, means):

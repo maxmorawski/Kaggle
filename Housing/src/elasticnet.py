@@ -3,7 +3,7 @@
 from sklearn.linear_model import ElasticNet
 import utils as u
 
-best_ratio = .073
+best_ratio = .73
 best_alpha = 0.00058
 
 if __name__ == '__main__':
