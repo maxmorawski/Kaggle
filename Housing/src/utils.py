@@ -40,25 +40,26 @@ def get_train_data(int_fillna_cols=INT_FILLNA_COLS, one_hot=True):
     """
     train = pd.read_csv('../data/train.csv')
     train[TARGET_COL] = log(train[TARGET_COL])
-    if(int_fillna_cols):
+    if int_fillna_cols:
         for col in int_fillna_cols:
             train[col].fillna(0, inplace=True)
-    if(not one_hot):
+    if not one_hot:
         return train
     cats = [c for c, d in zip(train.columns, train.dtypes) if str(d) == 'object']
     onehotvals = get_onehots(train, cats)
     set_onehots(train, onehotvals, drop=True)
     return train, onehotvals
 
-def get_test_data(onehotvals, int_fillna_cols=INT_FILLNA_COLS):
+def get_test_data(onehotvals=None, int_fillna_cols=INT_FILLNA_COLS):
     """
     Read the test data from disk, and one-hot encode the previously identified
     columns and values.
     """
-    test = pd.read_csv('data/test.csv')
+    test = pd.read_csv('../data/test.csv')
     for col in int_fillna_cols:
         test[col].fillna(0, inplace=True)
-    set_onehots(test, onehotvals, drop=True)
+    if onehotvals is not None:
+        set_onehots(test, onehotvals, drop=True)
     return test
 
 def run_cross_val(clf, train, cv=5):
@@ -67,7 +68,7 @@ def run_cross_val(clf, train, cv=5):
     return sqrt(abs(scores)).mean()
 
 def build_submission(clf,
-        fit=True, onehotvals=None, train=None, test=None, fname='data/submission.csv'):
+        fit=True, onehotvals=None, train=None, test=None, fname='../data/submission.csv'):
     if (fit and train is None) or onehotvals is None:
         train, onehotvals = get_train_data()
     if fit:

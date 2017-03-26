@@ -1,7 +1,6 @@
 import utils
-import pandas
 
-def encode(train, test, option):
+def fix_categorical(train, test, option):
     cats = [c for c, d in zip(train.columns, train.dtypes) if str(d) == 'object']
     for c in cats:
         train[c] = train[c].apply(str)
@@ -26,8 +25,38 @@ def to_int(train, test):
         test[col] = test[col].apply(lambda x: vals.index(x))
     return train, test
 
-#train = pandas.DataFrame({"colA" : ["A", "B", "C", "A", "A"]})
-#test = pandas.DataFrame({"colA" : ["E", "F", "C", "A", "A"]})
+def fix_numeric(train, test, cols, fillna_mode='zero', scaling='normal'):
+    if fillna_mode == 'zero':
+        train[cols].fillna(0, inplace=True)
+        test[cols].fillna(0, inplace=True)
+    elif fillna_mode == 'mean':
+        means = [train[c].mean() for c in cols]
+        for c, m in zip(cols, means):
+            train[c].fillna(m, inplace=True)
+            test[c].fillna(m, inplace=True)
+    elif fillna_mode == 'median':
+        meds = [train[c].median() for c in cols]
+        for c, m in zip(cols, meds):
+            train[c].fillna(m, inplace=True)
+            test[c].fillna(m, inplace=True)
+    else:
+        raise ValueError('Unknown value for fillna_mode')
 
-#print(encode(train, test, "one_hot"))
+    if scaling == 'normal':
+        means = [train[c].mean() for c in cols]
+        stds = [train[c].std() for c in cols]
+        for c, m, s in zip(cols, means, stds):
+            train[c] = (train[c] - m) / s
+            test[c] = (test[c] - m) / s
+    elif scaling == 'uniform':
+        maxs = [train[c].max() for c in cols]
+        mins = [train[c].min() for c in cols]
+        for c, mx, mn in zip(cols, maxs, mins):
+            train[c] = (train[c] - mn) / (mx - mn)
+            test[c] = (test[c] - mn) / (mx - mn)
+    elif scaling is None or scaling == 'none':
+        pass
+    else:
+        raise ValueError('Unknown value for scaling')
 
+    return train, test
