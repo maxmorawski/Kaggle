@@ -1,6 +1,6 @@
 import utils
 
-def fix_categorical(train, test, option, nullcol=True):
+def fix_categorical(train, test, option="one_hot", nullcol=True):
     cats = [c for c, d in zip(train.columns, train.dtypes) if str(d) == 'object']
     if nullcol:
         for c in cats:

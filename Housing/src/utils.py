@@ -63,7 +63,10 @@ def get_test_data(onehotvals=None, int_fillna_cols=INT_FILLNA_COLS):
     return test
 
 def run_cross_val(clf, train, cv=5):
-    scores = cross_val_score(clf, train.drop(TRAIN_IGNORE, axis=1), train[TARGET_COL],
+    train = train.copy()
+    for c in TEST_IGNORE:
+        if c in train.columns: train.drop(c, axis=1, inplace=True)
+    scores = cross_val_score(clf, train.drop(TARGET_COL, axis=1), train[TARGET_COL],
             cv=cv, scoring='neg_mean_squared_error', n_jobs=-1)
     return sqrt(abs(scores)).mean()
 
