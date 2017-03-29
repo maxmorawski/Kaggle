@@ -1,14 +1,22 @@
+from collections import defaultdict
 from numpy import log, abs, sqrt, exp
 import pandas as pd
-from collections import defaultdict
+from sklearn.base import BaseEstimator, RegressorMixin
 from sklearn.model_selection import cross_val_score
+from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor
+from sklearn.linear_model import ElasticNet
+from sklearn.svm import SVR
 
-INT_FILLNA_COLS = [
-        'LotFrontage', 'MasVnrArea', 'BsmtFinSF1', 'BsmtFinSF2', 'BsmtUnfSF',
-        'TotalBsmtSF', 'BsmtFullBath', 'BsmtHalfBath', 'GarageCars', 'GarageArea']
-TRAIN_IGNORE = ['GarageYrBlt', 'Id', 'SalePrice']
-TEST_IGNORE = ['GarageYrBlt', 'Id']
-TARGET_COL = 'SalePrice'
+# conda install -c rasbt mlxtend
+# Lets us do:
+#   StackingRegressor(regressors=[ElasticNet(), RandomForestRegressor(), ...],
+#                     meta_regressor=AvgReg())
+from mlxtend.regressor import StackingRegressor
+
+def cross_val(clf, train, cv=5):
+    scores = cross_val_score(clf, train.drop(["SalePrice", "Id"], axis=1), train["SalePrice"],
+                             cv=cv, scoring='neg_mean_squared_error', n_jobs=-1)
+    return sqrt(abs(scores)).mean()
 
 def get_onehots(df, cols):
     """
@@ -32,53 +40,60 @@ def set_onehots(df, vals, drop=True):
         if drop:
             df.drop(c, inplace=True, axis=1)
 
-def get_train_data(int_fillna_cols=INT_FILLNA_COLS, one_hot=True):
-    """
-    Read the training data from disk, identify the categorical variables and
-    values to one-hot encode, and return the encoded data and the dictionary
-    of one-hot values.
-    """
+def get_data():
     train = pd.read_csv('../data/train.csv')
-    train[TARGET_COL] = log(train[TARGET_COL])
-    if int_fillna_cols:
-        for col in int_fillna_cols:
-            train[col].fillna(0, inplace=True)
-    if not one_hot:
-        return train
+    test = pd.read_csv('../data/test.csv')
+    
+    #Log time
+    train["SalePrice"] = log(train["SalePrice"])
+
+    # Sadbad column
+    train = train.drop('GarageYrBlt', axis=1)
+    test  =  test.drop('GarageYrBlt', axis=1)
+
+    # Do numerical processing on these assholes
+    ncols = [c for c, d in zip(train.columns, train.dtypes) if str(d) in ["float64", "int64"]]
+    ncols.remove("Id")
+    ncols.remove("SalePrice")
+    for c in ncols:
+        train[c].fillna(0, inplace=True)
+        test[c].fillna(0, inplace=True)
+    
     cats = [c for c, d in zip(train.columns, train.dtypes) if str(d) == 'object']
+    # Turn these fuckers into strings
+    for c in cats:
+        train[c] = train[c].astype(str)
+        test[c] = test[c].astype(str)
+        
+    # One hot these bitches (not in a sexist way)
     onehotvals = get_onehots(train, cats)
     set_onehots(train, onehotvals, drop=True)
-    return train, onehotvals
+    set_onehots(test, onehotvals, drop=True)
+    
+    maxs = [train[c].max() for c in ncols]
+    mins = [train[c].min() for c in ncols]
+    for c, mx, mn in zip(ncols, maxs, mins):
+        train[c] = (train[c] - mn) / (mx - mn)
+        test[c] = (test[c] - mn) / (mx - mn)
 
-def get_test_data(onehotvals=None, int_fillna_cols=INT_FILLNA_COLS):
-    """
-    Read the test data from disk, and one-hot encode the previously identified
-    columns and values.
-    """
-    test = pd.read_csv('../data/test.csv')
-    for col in int_fillna_cols:
-        test[col].fillna(0, inplace=True)
-    if onehotvals is not None:
-        set_onehots(test, onehotvals, drop=True)
-    return test
+    return train, test
 
-def run_cross_val(clf, train, cv=5):
-    train = train.copy()
-    for c in TEST_IGNORE:
-        if c in train.columns: train.drop(c, axis=1, inplace=True)
-    scores = cross_val_score(clf, train.drop(TARGET_COL, axis=1), train[TARGET_COL],
-            cv=cv, scoring='neg_mean_squared_error', n_jobs=-1)
-    return sqrt(abs(scores)).mean()
+def save_submission(test, pred, fname):
+    res = pd.DataFrame({'Id': test.Id, 'SalePrice': exp(pred)})
+    res.to_csv(fname, index=False)
 
-def build_submission(clf,
-        fit=True, onehotvals=None, train=None, test=None, fname='../data/submission.csv'):
-    if (fit and train is None) or onehotvals is None:
-        train, onehotvals = get_train_data()
-    if fit:
-        clf.fit(train.drop(TRAIN_IGNORE, axis=1), train[TARGET_COL])
-    if test is None:
-        test = get_test_data(onehotvals)
-    pred = clf.predict(test.drop(TEST_IGNORE, axis=1))
-    sub = pd.DataFrame({'Id': test.Id, 'SalePrice': exp(pred)})
-    sub.to_csv(fname, index=False)
+def build_submission(clf, train, test, fname=None):
+    clf.fit(train.drop(['SalePrice', 'Id'], axis=1), train.SalePrice)
+    pred = clf.predict(test.drop('Id', axis=1))
+    if fname is not None:
+        save_submission(test, pred, fname)
+    return pred
 
+# Regressor that just takes the average of its inputs.
+class AvgReg(BaseEstimator, RegressorMixin):
+    def __init__(self):
+        pass
+    def fit(self, X, y):
+        pass
+    def predict(self, X):
+        return X.mean(axis=1).reshape(-1)
