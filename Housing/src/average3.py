@@ -7,8 +7,8 @@ from sklearn.ensemble import GradientBoostingRegressor
 import utils
 import encode as enc
 
-best_ratio = .73
-best_alpha = 0.00058
+best_ratio = .825
+best_alpha = 0.00062
 
 if __name__ == '__main__':
     train = utils.get_train_data([], False)
