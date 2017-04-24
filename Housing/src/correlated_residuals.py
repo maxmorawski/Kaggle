@@ -12,12 +12,12 @@ if __name__ == '__main__':
     train, test = utils.get_data()
 
     # Compute the residuals of each regressor using a k=5 fold over the training data
-    clfs = [clf1, clf2, clf3, clf4]
+    clfs = [clf1, clf2, clf3]#, clf4]
     ress = [pd.concat( utils.each_fold( utils.get_residual_fun(c), train) ) for c in clfs]
     resmat = array([r.Residual for r in ress])
 
     # Use the covariance of the residuals to compute the optimal weighting of the regressors
-    wav = utils.WavgReg(.008)
-    stack = StackingRegressor(regressors=clfs[:3], meta_regressor=wav)
+    wav = utils.WavgReg(1)# .008)
+    stack = StackingRegressor(regressors=clfs, meta_regressor=wav)
 
-    utils.build_submission(stack, train, test, '../data/submission12.csv')
+    # utils.build_submission(stack, train, test, '../data/submission12.csv')

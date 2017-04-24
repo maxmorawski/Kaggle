@@ -1,5 +1,5 @@
 from collections import defaultdict
-from numpy import log, abs, sqrt, exp, cov, ones, zeros, eye, array
+from numpy import log, abs, sqrt, exp, cov, ones, zeros, eye, array, nan
 import pandas as pd
 from sklearn.base import BaseEstimator, RegressorMixin
 from sklearn.model_selection import KFold
@@ -17,6 +17,76 @@ from mlxtend.regressor import StackingRegressor
 # conda install cvxopt
 import cvxopt
 cvxopt.solvers.options['show_progress'] = False
+
+# Painstakingly determined
+fill_vals = {
+  (2577, 'GarageType'): nan,
+  (2127, 'GarageYrBlt'): 1963,
+  (2127, 'GarageFinish'): "Unf",
+  (2127, 'GarageQual'): "TA",
+  (2127, 'GarageCond'): "TA",
+  (2421, 'PoolQC'): "Gd",
+  (2504, 'PoolQC'): "Gd",
+  (2600, 'PoolQC'): "Gd",
+  (1556, 'KitchenQual'): 'TA',
+  (2611, 'MasVnrType'): 'BrkCmn',
+  (1916, 'MSZoning'): 'RL',
+  (2217, 'MSZoning'): 'RL',
+  (2251, 'MSZoning'): 'RL',
+  (2905, 'MSZoning'): 'RL',
+  (27,   'BsmtExposure'): 'No',
+  (332,  'BsmtFinType2'): 'Unf',
+  (333,  'BsmtFinType2'): 'Unf',
+  (580,  'BsmtCond'): 'TA',
+  (725,  'BsmtCond'): 'TA',
+  (888,  'BsmtExposure'): 'No',
+  (948,  'BsmtExposure'): 'No',
+  (949,  'BsmtExposure'): 'No',
+  (1064, 'BsmtCond'): 'TA',
+  (1488, 'BsmtExposure'): 'No',
+  (2041, 'BsmtCond'): 'TA',
+  (2186, 'BsmtCond'): 'TA',
+  (2218, 'BsmtQual'): 'TA',
+  (2219, 'BsmtQual'): 'TA',
+  (2349, 'BsmtExposure'): 'No',
+  (2525, 'BsmtCond'): 'TA',
+  (1916, 'Utilities'): 'AllPub',
+  (1946, 'Utilities'): 'AllPub',
+  (2152, 'Exterior1st'): 'Wd Sdng',
+  (2152, 'Exterior2nd'): 'MetalSd',
+  (1380, 'Electrical'): 'SBrkr'
+}
+
+qualitatives = [('BsmtCond', 'HasBsmt'), ('GarageType',  'HasGarage'),
+                ('PoolQC',   'HasPool'), ('FireplaceQu', 'HasFire'  ),
+                ('Fence',   'HasFence'), ('Alley',       'HasAlley' ),
+                ('SaleType','HasSaleT'), ('MiscFeature', 'HasMisc'  ),
+                ('Functional','HasFunc')
+                ]
+
+def test_col_group(df, cols, hascol):
+    coll = []
+    for c in cols:
+        coll.extend([x for x in df.columns if (c + '_') in x])
+    assert(not df[coll][~df[hascol]].any().any())
+
+def run_col_group_tests(df):
+    test_col_group(df,
+            ['GarageType', 'GarageYrBlt', 'GarageFinish', 'GarageQual', 'GarageCond'],
+            'HasGarage')
+    test_col_group(df,
+            ['PoolArea', 'PoolQC'],
+            'HasPool')
+    test_col_group(df,
+            ['BsmtFinSF1', 'BsmtFinSF2', 'BsmtUnfSF', 'TotalBsmtSF', 'BsmtFullBath', 'BsmtHalfBath',
+             'HasBsmt', 'BsmtQual', 'BsmtCond', 'BsmtExposure', 'BsmtFinType1', 'BsmtFinType2'],
+            'HasBsmt')
+    test_col_group(df, ['FireplaceQu', 'Fireplaces'], 'HasFire')
+    test_col_group(df, ['Fence'], 'HasFence')
+    test_col_group(df, ['Alley'], 'HasAlley')
+    test_col_group(df, ['SaleType'], 'HasSaleT')
+    test_col_group(df, ['MiscFeature'], 'HasMisc')
+    test_col_group(df, ['Functional'], 'HasFunc')
 
 def optimal_weighting(res, reg=.05):
     """
@@ -81,18 +151,13 @@ def get_residual_fun(reg):
         return pd.DataFrame({'Id':test.Id, 'Residual':pred - test.SalePrice})
     return res
 
+
 def get_data():
     train = pd.read_csv('../data/train.csv')
     test = pd.read_csv('../data/test.csv')
     
     #Log time
     train["SalePrice"] = log(train["SalePrice"])
-
-    # Sadbad column
-    train['HasGarage'] = ~train.GarageYrBlt.isnull()
-    test['HasGarage'] = ~test.GarageYrBlt.isnull()
-    train.drop('GarageYrBlt', axis=1, inplace=True)
-    test.drop('GarageYrBlt', axis=1, inplace=True)
 
     # Do numerical processing on these assholes
     ncols = [c for c, d in zip(train.columns, train.dtypes) if str(d) in ["float64", "int64"]]
@@ -101,17 +166,41 @@ def get_data():
     for c in ncols:
         train[c].fillna(0, inplace=True)
         test[c].fillna(0, inplace=True)
-    
+
+    # Fill in the values we checked
+    for ((i, col), val) in fill_vals.iteritems():
+        i -= 1
+        if i < train.shape[0]:
+            train[col].iloc[i] = val
+        else:
+            test[col].iloc[i-train.shape[0]] = val
+
     cats = [c for c, d in zip(train.columns, train.dtypes) if str(d) == 'object']
-    # Turn these fuckers into strings
-    for c in cats:
-        train[c] = train[c].astype(str)
-        test[c] = test[c].astype(str)
+    # Don't actually turn them into strings, as we're handling the nans more manually now
+    # # Turn these fuckers into strings
+    # for c in cats:
+    #     train[c] = train[c].astype(str)
+    #     test[c] = test[c].astype(str)
+
+    # Special case for Masonry columns, as they already have a special 'None' value
+    for x in (train, test):
+        nomas = x.MasVnrType.isnull() & x.MasVnrArea.isnull()
+        x.MasVnrType[nomas] = 'None'
+        x.MasVnrArea[nomas] = 0.0
+
+    # Set up our qualitative columns (whether house has a garage, etc.)
+    for checkcol, name in qualitatives:
+        train[name] = ~train[checkcol].isnull()
+        test [name] = ~test [checkcol].isnull()
         
     # One hot these bitches (not in a sexist way)
     onehotvals = get_onehots(train, cats)
     set_onehots(train, onehotvals, drop=True)
     set_onehots(test, onehotvals, drop=True)
+
+    # At this point, we should be passing our grouping tests
+    run_col_group_tests(train)
+    run_col_group_tests(test)
     
     maxs = [train[c].max() for c in ncols]
     mins = [train[c].min() for c in ncols]
